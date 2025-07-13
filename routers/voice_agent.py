@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from models.schemas import VoiceResponse, User
 from routers.auth import get_current_user
-from services.openai_stt import transcribe_audio
+from services.whisper_stt import transcribe_audio
 from services.gpt_agent import process_query
 from services.sesame_tts import generate_speech
 from services.product_query import get_product_context

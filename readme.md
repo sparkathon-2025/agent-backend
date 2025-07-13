@@ -8,14 +8,14 @@ FastAPI-based backend for a voice-based retail assistant used in physical stores
 📦 **Availability Check** - Check stock and variants  
 🔄 **Product Comparison** - Compare with similar products  
 🧭 **Store Navigation** - Find aisle/shelf locations  
-🗣️ **Voice Interaction** - Natural speech processing with STT, LLM, and TTS
+🗣️ **Voice Interaction** - Natural speech processing with local Whisper v3 Turbo STT, LLM, and TTS
 
 ## Tech Stack
 
 - **API**: FastAPI
 - **Database**: MongoDB with Motor (async)
 - **Authentication**: JWT with bcrypt
-- **STT**: OpenAI Whisper
+- **STT**: Local Whisper v3 Turbo (offline)
 - **LLM**: OpenAI GPT-4
 - **TTS**: Sesame TTS API
 
@@ -76,9 +76,6 @@ DATABASE_NAME=voice_agent
 SECRET_KEY=your-secret-key-here
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# OpenAI (for STT using Whisper)
-OPENAI_API_KEY=your-openai-api-key
 
 # Sesame (for TTS)
 SESAME_TTS_API_URL=https://api.sesame.com/v1/tts
@@ -147,6 +144,9 @@ Ready for deployment on Railway, Render, or AWS EC2. Make sure to:
 Comprehensive documentation is available in the `docs/` directory, including:
 
 - API reference
+- Setup and installation guide
+- Usage examples
+- Contribution guidelines
 - Setup and installation guide
 - Usage examples
 - Contribution guidelines
