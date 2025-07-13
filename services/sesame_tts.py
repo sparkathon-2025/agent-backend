@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Optional
+from typing import Optional, AsyncGenerator
 from .tts.service import TTSService
 
 logger = logging.getLogger(__name__)
@@ -124,24 +124,46 @@ async def get_tts_health() -> dict:
     except Exception as e:
         logger.error(f"Error getting TTS health: {e}")
         return {"status": "error", "message": str(e)}
-            }
+
+async def generate_speech_streaming(
+    session_id: str,
+    voice: str = "alloy",
+    response_format: str = "mp3",
+    speed: float = 1.0
+) -> AsyncGenerator[bytes, None]:
+    """Generate speech from streaming text input"""
+    
+    try:
+        tts_service = get_tts_service()
+        
+        logger.info(f"Starting streaming TTS session: {session_id}, voice: {voice}")
+        
+        async for audio_chunk in tts_service.generate_speech_streaming(
+            session_id=session_id,
+            voice=voice,
+            speed=speed,
+            response_format=response_format
+        ):
+            yield audio_chunk
             
-            headers = {
-                "Content-Type": "application/json"
-            }
-            
-            async with session.post(endpoint, json=data, headers=headers) as response:
-                if response.status == 200:
-                    audio_data = await response.read()
-                    logger.info(f"Generated speech with cloned voice {voice_id}")
-                    return audio_data
-                else:
-                    error_text = await response.text()
-                    logger.error(f"Cloned voice TTS error {response.status}: {error_text}")
-                    # Fallback to regular TTS with the voice_id as voice name
-                    return await generate_speech(text, voice=voice_id)
-                    
     except Exception as e:
-        logger.error(f"Cloned voice TTS error: {e}")
-        # Fallback to regular TTS
-        return await generate_speech(text)
+        logger.error(f"Streaming TTS Error: {e}")
+        yield b""
+
+def add_text_to_stream(session_id: str, text: str):
+    """Add text to streaming TTS session"""
+    try:
+        tts_service = get_tts_service()
+        tts_service.add_text_to_stream(session_id, text)
+        logger.debug(f"Added text to stream {session_id}: {text[:50]}...")
+    except Exception as e:
+        logger.error(f"Error adding text to stream: {e}")
+
+def complete_stream(session_id: str):
+    """Mark streaming session as complete"""
+    try:
+        tts_service = get_tts_service()
+        tts_service.complete_stream(session_id)
+        logger.info(f"Completed stream {session_id}")
+    except Exception as e:
+        logger.error(f"Error completing stream: {e}")

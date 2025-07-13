@@ -3,12 +3,40 @@ import logging
 import torch
 import asyncio
 import os
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, AsyncGenerator
 from .models import Segment, VoiceProfile, TTSRequest
 from .generator import Generator, load_csm_1b
 from .audio_processing import enhance_audio_quality, remove_long_silences, audio_to_bytes
+import queue
+import threading
 
 logger = logging.getLogger(__name__)
+
+class StreamingTTSBuffer:
+    """Buffer for streaming TTS generation"""
+    
+    def __init__(self, max_size: int = 10):
+        self.text_queue = queue.Queue(maxsize=max_size)
+        self.audio_queue = queue.Queue(maxsize=max_size)
+        self.is_processing = False
+        self.is_complete = False
+    
+    def add_text(self, text: str):
+        """Add text to generation queue"""
+        if text.strip():
+            self.text_queue.put(text)
+    
+    def complete(self):
+        """Mark text input as complete"""
+        self.is_complete = True
+        self.text_queue.put(None)  # Sentinel value
+    
+    def get_audio(self) -> Optional[bytes]:
+        """Get generated audio chunk"""
+        try:
+            return self.audio_queue.get_nowait()
+        except queue.Empty:
+            return None
 
 class TTSService:
     """Main TTS service for local text-to-speech generation."""
@@ -33,6 +61,9 @@ class TTSService:
         
         # Initialize generator
         self._initialize_generator()
+        
+        # Streaming parameters
+        self.streaming_buffers: Dict[str, StreamingTTSBuffer] = {}
         
         logger.info(f"TTS Service initialized on {device}")
     
@@ -95,6 +126,114 @@ class TTSService:
         except Exception as e:
             logger.error(f"Speech generation failed: {e}")
             raise
+    
+    async def generate_speech_streaming(
+        self, 
+        session_id: str,
+        voice: str = "alloy",
+        speed: float = 1.0,
+        temperature: float = 0.7,
+        response_format: str = "wav"
+    ) -> AsyncGenerator[bytes, None]:
+        """Generate speech from streaming text input."""
+        
+        if session_id not in self.streaming_buffers:
+            self.streaming_buffers[session_id] = StreamingTTSBuffer()
+        
+        buffer = self.streaming_buffers[session_id]
+        speaker_id = self._get_speaker_id(voice)
+        
+        try:
+            # Start background processing
+            processing_task = asyncio.create_task(
+                self._process_streaming_text(buffer, speaker_id, temperature, speed, response_format)
+            )
+            
+            # Yield audio chunks as they become available
+            while not (buffer.is_complete and buffer.text_queue.empty() and buffer.audio_queue.empty()):
+                audio_chunk = buffer.get_audio()
+                if audio_chunk:
+                    yield audio_chunk
+                else:
+                    await asyncio.sleep(0.01)  # Small delay to prevent busy waiting
+            
+            # Wait for processing to complete
+            await processing_task
+            
+            # Yield any remaining audio
+            while True:
+                audio_chunk = buffer.get_audio()
+                if audio_chunk is None:
+                    break
+                yield audio_chunk
+            
+        finally:
+            # Cleanup
+            if session_id in self.streaming_buffers:
+                del self.streaming_buffers[session_id]
+    
+    async def _process_streaming_text(
+        self, 
+        buffer: StreamingTTSBuffer, 
+        speaker_id: int, 
+        temperature: float,
+        speed: float,
+        response_format: str
+    ):
+        """Background task to process text chunks into audio"""
+        
+        while True:
+            try:
+                # Get text chunk
+                text_chunk = buffer.text_queue.get(timeout=1.0)
+                
+                if text_chunk is None:  # Sentinel value
+                    break
+                
+                # Generate audio for this chunk
+                audio = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    self._generate_audio,
+                    text_chunk,
+                    speaker_id,
+                    temperature
+                )
+                
+                # Apply speed adjustment
+                if speed != 1.0:
+                    audio = self._adjust_speed(audio, speed)
+                
+                # Apply audio enhancements (lighter processing for streaming)
+                audio = self._light_audio_processing(audio)
+                
+                # Convert to bytes
+                audio_bytes = audio_to_bytes(audio, self.sample_rate, response_format)
+                
+                # Add to output queue
+                buffer.audio_queue.put(audio_bytes)
+                
+            except queue.Empty:
+                if buffer.is_complete:
+                    break
+                continue
+            except Exception as e:
+                logger.error(f"Streaming TTS processing error: {e}")
+                break
+    
+    def _light_audio_processing(self, audio: torch.Tensor) -> torch.Tensor:
+        """Lightweight audio processing for streaming"""
+        # Apply minimal processing to reduce latency
+        return audio
+    
+    def add_text_to_stream(self, session_id: str, text: str):
+        """Add text to streaming TTS session"""
+        if session_id in self.streaming_buffers:
+            self.streaming_buffers[session_id].add_text(text)
+    
+    def complete_stream(self, session_id: str):
+        """Mark streaming session as complete"""
+        if session_id in self.streaming_buffers:
+            self.streaming_buffers[session_id].complete()
     
     def _generate_audio(self, text: str, speaker_id: int, temperature: float) -> torch.Tensor:
         """Generate audio tensor from text."""
