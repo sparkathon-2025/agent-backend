@@ -32,7 +32,7 @@ async def process_query(
     
     try:
         response = openai.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4.1-nano",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Context:\n{context_text}\n\nCustomer question: {user_query}"}
