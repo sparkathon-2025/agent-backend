@@ -1,0 +1,19 @@
+[project]
+name = "agent-backend"
+version = "0.1.0"
+description = "FastAPI-based backend for voice-based retail assistant"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiofiles>=24.1.0",
+    "fastapi>=0.116.1",
+    "motor>=3.7.1",
+    "openai>=1.95.1",
+    "passlib[bcrypt]>=1.7.4",
+    "pydantic>=2.11.7",
+    "python-dotenv>=1.1.1",
+    "python-jose[cryptography]>=3.5.0",
+    "python-multipart>=0.0.20",
+    "requests>=2.32.4",
+    "uvicorn[standard]>=0.35.0",
+]
