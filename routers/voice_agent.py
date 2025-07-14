@@ -1,23 +1,22 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect
-from models.schemas import VoiceResponse, User
-from routers.auth import get_current_user
-from services.whisper_stt import transcribe_audio, create_streaming_stt
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect
+from models.schemas import VoiceResponse
+from services.deepgram_stt import transcribe_audio, create_streaming_deepgram
 from services.gpt_agent import process_query, process_query_streaming, process_partial_query
-from services.sesame_tts import generate_speech, generate_speech_streaming, add_text_to_stream, complete_stream
+from services.sesame_tts import generate_speech, generate_speech_streaming, add_text_to_stream, complete_stream, list_available_voices
 from services.product_query import get_product_context
 import base64
 import json
 import uuid
 import asyncio
+import logging
 
 router = APIRouter()
 
 @router.post("/query", response_model=VoiceResponse)
 async def voice_query(
     audio: UploadFile = File(...),
-    user_id: str = Form(...),
     product_id: str = Form(None),
-    current_user: User = Depends(get_current_user)
+    store_id: str = Form(None)
 ):
     try:
         # Validate audio file
@@ -27,7 +26,7 @@ async def voice_query(
         # Read audio data
         audio_data = await audio.read()
         
-        # Step 1: STT - Transcribe audio using Sesame CSM
+        # Step 1: STT - Transcribe audio using Deepgram
         transcription = await transcribe_audio(audio_data)
         
         # Step 2: Get product context if product_id provided
@@ -39,7 +38,7 @@ async def voice_query(
         response_text = await process_query(
             transcription, 
             product_context, 
-            current_user.current_store_id
+            store_id
         )
         
         # Step 4: TTS - Generate speech from response
@@ -63,9 +62,12 @@ async def voice_stream(websocket: WebSocket):
     await websocket.accept()
     
     session_id = str(uuid.uuid4())
-    streaming_stt = await create_streaming_stt()
+    streaming_stt = None
     
     try:
+        # Initialize streaming STT
+        streaming_stt = await create_streaming_deepgram()
+        
         while True:
             # Receive message from client
             data = await websocket.receive_text()
@@ -73,34 +75,30 @@ async def voice_stream(websocket: WebSocket):
             
             message_type = message.get("type")
             
-            if message_type == "audio_chunk":
+            if message_type == "start_session":
+                # Session started
+                await websocket.send_text(json.dumps({
+                    "type": "session_started",
+                    "session_id": session_id
+                }))
+            
+            elif message_type == "audio_chunk":
                 # Process audio chunk
                 audio_data = base64.b64decode(message["audio"])
                 
-                # Get partial transcription
-                transcription, is_final = await streaming_stt.process_audio_chunk(audio_data)
+                # Send to Deepgram
+                await streaming_stt.send_audio(audio_data)
+                
+                # Get latest transcription
+                transcription, is_final = streaming_stt.get_latest_transcription()
                 
                 if transcription:
-                    # Send partial transcription to client
+                    # Send transcription to client
                     await websocket.send_text(json.dumps({
-                        "type": "partial_transcript",
+                        "type": "transcript",
                         "text": transcription,
                         "is_final": is_final
                     }))
-                    
-                    # If partial and long enough, provide immediate feedback
-                    if not is_final and len(transcription.strip()) > 10:
-                        quick_response = await process_partial_query(
-                            transcription,
-                            message.get("product_context"),
-                            message.get("store_id")
-                        )
-                        
-                        if quick_response:
-                            await websocket.send_text(json.dumps({
-                                "type": "quick_response",
-                                "text": quick_response
-                            }))
                     
                     # Process final transcription
                     if is_final:
@@ -114,7 +112,7 @@ async def voice_stream(websocket: WebSocket):
             
             elif message_type == "end_audio":
                 # Finalize transcription and process
-                final_transcription = await streaming_stt.finalize_transcription()
+                final_transcription = await streaming_stt.finish_and_get_final()
                 
                 if final_transcription:
                     await _process_final_query(
@@ -136,12 +134,15 @@ async def voice_stream(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     except Exception as e:
+        logging.error(f"WebSocket error: {e}")
         await websocket.send_text(json.dumps({
             "type": "error",
             "message": str(e)
         }))
     finally:
         # Cleanup
+        if streaming_stt:
+            await streaming_stt.close_connection()
         complete_stream(session_id)
 
 async def _process_final_query(

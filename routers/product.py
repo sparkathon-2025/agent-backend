@@ -1,6 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from models.schemas import ProductScan, Product, User
-from routers.auth import get_current_user
+from fastapi import APIRouter, HTTPException, status
+from models.schemas import ProductScan, Product
 from db.mongo import get_database
 from services.product_query import (
     get_product_variants,
@@ -12,19 +11,19 @@ from services.product_query import (
 router = APIRouter()
 
 @router.post("/scan", response_model=Product)
-async def scan_product(scan_data: ProductScan, current_user: User = Depends(get_current_user)):
+async def scan_product(scan_data: ProductScan, store_id: str = None):
     db = get_database()
     
-    if not current_user.current_store_id:
+    if not store_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Please connect to a store first"
+            detail="Store ID is required"
         )
     
-    # Find product by barcode_id in current store
+    # Find product by barcode_id in specified store
     product = await db.products.find_one({
         "product_code": scan_data.barcode_id,
-        "store_id": current_user.current_store_id
+        "store_id": store_id
     })
     
     if not product:
@@ -89,13 +88,13 @@ async def get_product_location_info(product_id: str):
     return result
 
 @router.get("/{product_id}/similar")
-async def get_similar_products_info(product_id: str, current_user: User = Depends(get_current_user)):
-    """Find similar products in user's current store"""
-    if not current_user.current_store_id:
+async def get_similar_products_info(product_id: str, store_id: str):
+    """Find similar products in specified store"""
+    if not store_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Please connect to a store first"
+            detail="Store ID is required"
         )
     
-    result = await find_similar_products(product_id, current_user.current_store_id)
+    result = await find_similar_products(product_id, store_id)
     return {"similar_products": result}

@@ -14,7 +14,6 @@ FastAPI-based backend for a voice-based retail assistant used in physical stores
 
 - **API**: FastAPI
 - **Database**: MongoDB with Motor (async)
-- **Authentication**: JWT with bcrypt
 - **STT**: Local Whisper v3 Turbo (offline)
 - **LLM**: OpenAI GPT-4
 - **TTS**: Sesame TTS API
@@ -41,29 +40,26 @@ FastAPI-based backend for a voice-based retail assistant used in physical stores
 
 ## API Endpoints
 
-### Authentication
-- `POST /auth/signup` - Register new user
-- `POST /auth/login` - Login user
-- `GET /auth/me` - Get current user
-
 ### Store Management
 - `POST /store/connect` - Connect to store via QR
 - `GET /store/{store_id}` - Get store details
+- `GET /store/` - List all stores
 
 ### Product Management
 - `POST /product/scan` - Scan product barcode
 - `GET /product/{id}` - Get product details
+- `GET /product/store/{store_id}` - List products in store
 
 ### Voice Agent (Main MVP)
 - `POST /voice-agent/query` - Process voice input and return audio response
+- `WebSocket /voice-agent/stream` - Real-time voice interaction
 
 ## Usage Flow
 
-1. User signs up/logs in
-2. User scans store QR code to connect
-3. User scans product barcode (optional)
-4. User speaks to voice agent
-5. Backend processes: Audio → STT → LLM → TTS → Audio response
+1. Connect to a store by providing store_id
+2. Optionally scan product barcode for context
+3. Speak to voice agent
+4. Backend processes: Audio → STT → LLM → TTS → Audio response
 
 ## Environment Variables
 
@@ -72,27 +68,18 @@ FastAPI-based backend for a voice-based retail assistant used in physical stores
 MONGODB_URL=mongodb://localhost:27017
 DATABASE_NAME=voice_agent
 
-# JWT
-SECRET_KEY=your-secret-key-here
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+# OpenAI
+OPENAI_API_KEY=your-openai-api-key
 
 # Sesame (for TTS)
 SESAME_TTS_API_URL=https://api.sesame.com/v1/tts
 SESAME_API_KEY=your-sesame-api-key
+
+# Deepgram (for STT)
+DEEPGRAM_API_KEY=your-deepgram-api-key
 ```
 
 ## Database Schema
-
-### Users Collection
-```json
-{
-  "_id": "uuid",
-  "email": "user@example.com",
-  "password_hash": "hashed_password",
-  "current_store_id": "store123"
-}
-```
 
 ### Stores Collection
 ```json
@@ -128,11 +115,24 @@ The project follows a modular structure:
 - `services/` - Business logic and external API integrations
 - `models/` - Pydantic schemas
 - `db/` - Database connection and operations
-- `utils/` - Helper utilities (JWT, etc.)
 
 ## Deployment
 
 Ready for deployment on Railway, Render, or AWS EC2. Make sure to:
+
+1. Set environment variables
+2. Configure MongoDB connection
+3. Add domain to CORS origins
+4. Setup SSL certificates for production
+
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory, including:
+
+- API reference
+- Setup and installation guide
+- Usage examples
+- Contribution guidelines
 
 1. Set environment variables
 2. Configure MongoDB connection

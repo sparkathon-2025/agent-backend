@@ -1,12 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from models.schemas import StoreConnect, Store, User
-from routers.auth import get_current_user
+from fastapi import APIRouter, HTTPException, status
+from models.schemas import StoreConnect, Store
 from db.mongo import get_database
 
 router = APIRouter()
 
 @router.post("/connect")
-async def connect_store(store_data: StoreConnect, current_user: User = Depends(get_current_user)):
+async def connect_store(store_data: StoreConnect):
     db = get_database()
     
     # Verify store exists
@@ -16,12 +15,6 @@ async def connect_store(store_data: StoreConnect, current_user: User = Depends(g
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Store not found"
         )
-    
-    # Update user's current store
-    await db.users.update_one(
-        {"_id": current_user.id},
-        {"$set": {"current_store_id": store_data.store_id}}
-    )
     
     return {"message": "Connected to store successfully", "store_id": store_data.store_id}
 
