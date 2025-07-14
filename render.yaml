@@ -6,19 +6,13 @@ services:
     envVars:
       - key: PORT
         value: 8000
-      - key: DATABASE_NAME
-        fromDatabase:
-          name: voice-agent-db
-          property: name
       - key: MONGODB_URL
-        fromDatabase:
-          name: voice-agent-db
-          property: connectionString
-
-databases:
-  - name: voice-agent-db
-    databaseName: voice_agent
-    user: voice_agent_user
-  - name: voice-agent-db
-    databaseName: voice_agent
-    user: voice_agent_user
+        sync: false
+      - key: DATABASE_NAME
+        value: voice_agent
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: ENVIRONMENT
+        value: production
