@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form, WebSocket,
 from models.schemas import VoiceResponse
 from services.deepgram_stt import transcribe_audio, create_streaming_deepgram
 from services.gpt_agent import process_query, process_query_streaming, process_partial_query
-from services.sesame_tts import generate_speech, generate_speech_streaming, add_text_to_stream, complete_stream, list_available_voices
+from services.deepgram_tts import generate_speech, generate_speech_streaming, add_text_to_stream, complete_stream, list_available_voices
 from services.product_query import get_product_context
 import base64
 import json
@@ -41,7 +41,7 @@ async def voice_query(
             store_id
         )
         
-        # Step 4: TTS - Generate speech from response
+        # Step 4: TTS - Generate speech from response using Deepgram
         audio_bytes = await generate_speech(response_text)
         audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
         
@@ -86,7 +86,7 @@ async def voice_stream(websocket: WebSocket):
                 # Process audio chunk
                 audio_data = base64.b64decode(message["audio"])
                 
-                # Send to Deepgram
+                # Send to Deepgram STT
                 await streaming_stt.send_audio(audio_data)
                 
                 # Get latest transcription
@@ -203,7 +203,7 @@ async def _process_final_query(
         }))
 
 async def _stream_tts_audio(websocket: WebSocket, session_id: str):
-    """Stream TTS audio to client"""
+    """Stream TTS audio to client using Deepgram"""
     
     try:
         async for audio_chunk in generate_speech_streaming(session_id):
